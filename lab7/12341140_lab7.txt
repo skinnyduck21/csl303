@@ -1,0 +1,207 @@
+SQL Queries:
+
+Q4 sql query:
+
+SELECT * FROM Students WHERE major = 'Engineering';
+
+Q6 sql query:
+
+SELECT s.first_name, s.last_name, c.course_name
+FROM Students s
+JOIN Enrollments e ON s.student_id = e.student_id
+JOIN Courses c ON e.course_id = c.course_id
+WHERE c.department = 'Humanities';
+
+
+EXPLAIN QUERY PLAN outputs:
+
+Q5 EXPLAIN QUERY PLAN output:
+
+QUERY PLAN
+`--SCAN Students
+
+Analysis: Performs a full table scan on Students since no index exists on major.
+
+Q7 EXPLAIN QUERY PLAN output:
+
+QUERY PLAN
+|--SCAN e
+|--SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
+`--SEARCH c USING INTEGER PRIMARY KEY (rowid=?)
+
+Analysis: Scans Enrollments and uses primary key lookups on Students and Courses, causing slower joins.
+
+Q9 EXPLAIN QUERY PLAN output:
+
+QUERY PLAN
+`--SEARCH Students USING INDEX idx_students_major (major=?)
+
+Analysis: Uses the idx_students_major index for faster lookups instead of scanning the entire table.
+
+Q11 EXPLAIN QUERY PLAN output:
+
+QUERY PLAN
+|--SCAN e
+|--SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
+`--SEARCH c USING INTEGER PRIMARY KEY (rowid=?)
+
+Analysis: Uses indexes on join keys, improving join efficiency though Enrollments still shows a scan.
+
+
+Python scripts:
+
+Q12:
+
+import sqlite3
+import time
+DB_FILE = "university.db"
+QUERY = "SELECT * FROM Students WHERE major = 'Engineering';"
+ITERATIONS = 100
+con = sqlite3.connect(DB_FILE)
+cur = con.cursor()
+# Drop index if it exists
+try:
+    cur.execute("DROP INDEX idx_students_major")
+    print("Index dropped.")
+except sqlite3.OperationalError:
+    print("Index did not exist.")
+total_time = 0
+for _ in range(ITERATIONS):
+    start_time = time.time()
+    cur.execute(QUERY).fetchall()
+    end_time = time.time()
+    total_time += (end_time - start_time)
+print(f"Avg. time without index: {total_time / ITERATIONS:.6f} seconds")
+con.close()
+
+Q13:
+
+import sqlite3
+import time
+
+DB_FILE = "university.db"
+QUERY = "SELECT * FROM Students WHERE major = 'Engineering';"
+ITERATIONS = 100
+
+con = sqlite3.connect(DB_FILE)
+cur = con.cursor()
+
+# Recreate the index
+try:
+    cur.execute("CREATE INDEX idx_students_major ON Students(major)")
+    print("Index created.")
+except sqlite3.OperationalError:
+    print("Index already exists.")
+
+total_time = 0
+for _ in range(ITERATIONS):
+    start_time = time.time()
+    cur.execute(QUERY).fetchall()
+    end_time = time.time()
+    total_time += (end_time - start_time)
+
+print(f"Avg. time with index: {total_time / ITERATIONS:.6f} seconds")
+
+con.close()
+
+Q14:
+
+import sqlite3
+import time
+import random
+
+DB_FILE = "university.db"
+INSERTS = 500
+
+con = sqlite3.connect(DB_FILE)
+cur = con.cursor()
+
+# Ensure indexes exist
+cur.execute("CREATE INDEX IF NOT EXISTS idx_enrollments_student_id ON Enrollments(student_id)")
+cur.execute("CREATE INDEX IF NOT EXISTS idx_enrollments_course_id ON Enrollments(course_id)")
+con.commit()
+print("Indexes created on student_id and course_id.")
+
+# Measure insert time
+start_time = time.time()
+for _ in range(INSERTS):
+    sid = random.randint(1, 2000)  # assuming 2000 students
+    cid = random.randint(1, 100)   # assuming 100 courses
+    grade = round(random.uniform(0, 10), 2)
+    cur.execute(
+        "INSERT INTO Enrollments (student_id, course_id, grade) VALUES (?, ?, ?)",
+        (sid, cid, grade)
+    )
+con.commit()
+end_time = time.time()
+
+print(f"Insert time with indexes: {end_time - start_time:.6f} seconds")
+
+con.close()
+
+Q15:
+
+import sqlite3
+import time
+import random
+
+DB_FILE = "university.db"
+INSERTS = 500
+
+con = sqlite3.connect(DB_FILE)
+cur = con.cursor()
+
+# Drop indexes if they exist
+cur.execute("DROP INDEX IF EXISTS idx_enrollments_student_id")
+cur.execute("DROP INDEX IF EXISTS idx_enrollments_course_id")
+con.commit()
+print("Indexes dropped from Enrollments table.")
+
+# Measure insert time
+start_time = time.time()
+for _ in range(INSERTS):
+    sid = random.randint(1, 2000)  # assuming 2000 students
+    cid = random.randint(1, 100)   # assuming 100 courses
+    grade = round(random.uniform(0, 10), 2)
+    cur.execute(
+        "INSERT INTO Enrollments (student_id, course_id, grade) VALUES (?, ?, ?)",
+        (sid, cid, grade)
+    )
+con.commit()
+end_time = time.time()
+
+print(f"Insert time without indexes: {end_time - start_time:.6f} seconds")
+
+con.close()
+
+
+Outputs of python scripts(Timing results):
+
+Q12:
+
+Index dropped.
+Avg. time without index: 0.001232 seconds
+
+
+Q13:
+
+Index created.
+Avg. time with index: 0.001103 seconds
+
+
+Q14:
+
+Indexes created on student_id and course_id.
+Insert time with indexes: 0.011463 seconds
+
+
+Q15:
+
+Indexes dropped from Enrollments table.
+Insert time without indexes: 0.002028 seconds
+
+
+Explaination:
+
+The results clearly show the trade offs of database indexing that Indexes improve read performance. That is SELECT queries run faster with an index because SQLite can quickly locate matching rows instead of scanning the entire table. But Indexes also slow down write operations. That is INSERT operations take longer when indexes exist, as the database must update index structures for every new row.
+Overall, indexes are essential for speeding up frequent read heavy queries, but they slightly degrade write performance, demonstrating the read write trade off in database design.
