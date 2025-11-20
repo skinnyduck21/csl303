@@ -1,0 +1,276 @@
+-- Step 1: Create ordered schedule with sequence numbers
+DROP TABLE IF EXISTS ordered_schedule;
+
+CREATE TABLE ordered_schedule AS
+SELECT
+    train,
+    station,
+    arr,
+    arrdate,
+    dep,
+    depdate,
+    ROW_NUMBER() OVER (
+        PARTITION BY train
+        ORDER BY 
+            COALESCE(arrdate, depdate),
+            COALESCE(arr, dep)
+    ) AS seq
+FROM schedule;
+
+-- ============================================
+-- TASK 1: Routes with at most TWO changes
+-- ============================================
+
+DROP TABLE IF EXISTS routes_two;
+
+CREATE TABLE routes_two (
+    StationA VARCHAR(6),
+    StationB VARCHAR(6),
+    Train1 INT,
+    Change1 VARCHAR(6),
+    Train2 INT,
+    Change2 VARCHAR(6),
+    Train3 INT
+);
+
+-- Insert direct routes (0 changes)
+INSERT INTO routes_two
+SELECT DISTINCT
+    A.station AS StationA,
+    B.station AS StationB,
+    A.train AS Train1,
+    NULL AS Change1,
+    NULL AS Train2,
+    NULL AS Change2,
+    NULL AS Train3
+FROM ordered_schedule A
+JOIN ordered_schedule B
+    ON A.train = B.train
+    AND A.seq < B.seq
+WHERE A.station IN (SELECT station FROM terminus)
+  AND B.station IN (SELECT station FROM terminus)
+  AND A.station <> B.station;
+
+-- Insert one-change routes
+INSERT INTO routes_two
+SELECT DISTINCT
+    A.station AS StationA,
+    C.station AS StationB,
+    A.train AS Train1,
+    X.station AS Change1,
+    Y.train AS Train2,
+    NULL AS Change2,
+    NULL AS Train3
+FROM ordered_schedule A
+JOIN ordered_schedule X 
+    ON A.train = X.train
+    AND A.seq < X.seq       -- A → X on Train1
+JOIN ordered_schedule Y
+    ON X.station = Y.station
+    AND Y.train <> A.train  -- Change trains at X
+JOIN ordered_schedule C
+    ON Y.train = C.train
+    AND Y.seq < C.seq       -- X → C on Train2
+WHERE A.station IN (SELECT station FROM terminus)
+  AND C.station IN (SELECT station FROM terminus)
+  AND A.station <> X.station
+  AND X.station <> C.station
+  AND A.station <> C.station;
+
+-- Insert two-change routes
+INSERT INTO routes_two
+SELECT DISTINCT
+    A.station AS StationA,
+    D.station AS StationB,
+    A.train AS Train1,
+    X.station AS Change1,
+    B.train AS Train2,
+    Y.station AS Change2,
+    C.train AS Train3
+FROM ordered_schedule A
+JOIN ordered_schedule X
+    ON A.train = X.train
+    AND A.seq < X.seq            -- A → X on Train1
+JOIN ordered_schedule B
+    ON X.station = B.station
+    AND B.train <> A.train       -- Change to Train2 at X
+JOIN ordered_schedule Y
+    ON B.train = Y.train
+    AND B.seq < Y.seq            -- X → Y on Train2
+JOIN ordered_schedule C
+    ON Y.station = C.station
+    AND C.train <> A.train
+    AND C.train <> B.train       -- Change to Train3 at Y
+JOIN ordered_schedule D
+    ON C.train = D.train
+    AND C.seq < D.seq            -- Y → D on Train3
+WHERE A.station IN (SELECT station FROM terminus)
+  AND D.station IN (SELECT station FROM terminus)
+  AND A.station <> X.station
+  AND A.station <> Y.station
+  AND A.station <> D.station
+  AND D.station <> X.station
+  AND D.station <> Y.station
+  AND X.station <> Y.station;
+
+-- Display results for Task 1
+SELECT * FROM routes_two 
+ORDER BY StationA, StationB, Train1;
+
+-- ============================================
+-- TASK 2: Routes with at most THREE changes
+-- ============================================
+
+DROP TABLE IF EXISTS routes_three;
+
+CREATE TABLE routes_three (
+    StationA VARCHAR(6),
+    StationB VARCHAR(6),
+    Train1 INT,
+    Change1 VARCHAR(6),
+    Train2 INT,
+    Change2 VARCHAR(6),
+    Train3 INT,
+    Change3 VARCHAR(6),
+    Train4 INT
+);
+
+-- Insert direct routes (0 changes)
+INSERT INTO routes_three
+SELECT DISTINCT
+    A.station AS StationA,
+    B.station AS StationB,
+    A.train AS Train1,
+    NULL AS Change1,
+    NULL AS Train2,
+    NULL AS Change2,
+    NULL AS Train3,
+    NULL AS Change3,
+    NULL AS Train4
+FROM ordered_schedule A
+JOIN ordered_schedule B
+    ON A.train = B.train
+    AND A.seq < B.seq
+WHERE A.station IN (SELECT station FROM terminus)
+  AND B.station IN (SELECT station FROM terminus)
+  AND A.station <> B.station;
+
+-- Insert one-change routes
+INSERT INTO routes_three
+SELECT DISTINCT
+    A.station AS StationA,
+    C.station AS StationB,
+    A.train AS Train1,
+    X.station AS Change1,
+    Y.train AS Train2,
+    NULL AS Change2,
+    NULL AS Train3,
+    NULL AS Change3,
+    NULL AS Train4
+FROM ordered_schedule A
+JOIN ordered_schedule X 
+    ON A.train = X.train
+    AND A.seq < X.seq
+JOIN ordered_schedule Y
+    ON X.station = Y.station
+    AND Y.train <> A.train
+JOIN ordered_schedule C
+    ON Y.train = C.train
+    AND Y.seq < C.seq
+WHERE A.station IN (SELECT station FROM terminus)
+  AND C.station IN (SELECT station FROM terminus)
+  AND A.station <> X.station
+  AND X.station <> C.station
+  AND A.station <> C.station;
+
+-- Insert two-change routes
+INSERT INTO routes_three
+SELECT DISTINCT
+    A.station AS StationA,
+    D.station AS StationB,
+    A.train AS Train1,
+    X.station AS Change1,
+    B.train AS Train2,
+    Y.station AS Change2,
+    C.train AS Train3,
+    NULL AS Change3,
+    NULL AS Train4
+FROM ordered_schedule A
+JOIN ordered_schedule X
+    ON A.train = X.train
+    AND A.seq < X.seq
+JOIN ordered_schedule B
+    ON X.station = B.station
+    AND B.train <> A.train
+JOIN ordered_schedule Y
+    ON B.train = Y.train
+    AND B.seq < Y.seq
+JOIN ordered_schedule C
+    ON Y.station = C.station
+    AND C.train <> A.train
+    AND C.train <> B.train
+JOIN ordered_schedule D
+    ON C.train = D.train
+    AND C.seq < D.seq
+WHERE A.station IN (SELECT station FROM terminus)
+  AND D.station IN (SELECT station FROM terminus)
+  AND A.station <> X.station
+  AND A.station <> Y.station
+  AND A.station <> D.station
+  AND D.station <> X.station
+  AND D.station <> Y.station
+  AND X.station <> Y.station;
+
+-- Insert three-change routes
+INSERT INTO routes_three
+SELECT DISTINCT
+    A.station AS StationA,
+    E.station AS StationB,
+    A.train AS Train1,
+    X.station AS Change1,
+    T2.train AS Train2,
+    Y.station AS Change2,
+    T3.train AS Train3,
+    Z.station AS Change3,
+    T4.train AS Train4
+FROM ordered_schedule A
+JOIN ordered_schedule X
+    ON A.train = X.train
+    AND A.seq < X.seq                -- A → X on Train1
+JOIN ordered_schedule T2
+    ON X.station = T2.station
+    AND T2.train <> A.train          -- Change to Train2 at X
+JOIN ordered_schedule Y
+    ON T2.train = Y.train
+    AND T2.seq < Y.seq               -- X → Y on Train2
+JOIN ordered_schedule T3
+    ON Y.station = T3.station
+    AND T3.train <> A.train
+    AND T3.train <> T2.train         -- Change to Train3 at Y
+JOIN ordered_schedule Z
+    ON T3.train = Z.train
+    AND T3.seq < Z.seq               -- Y → Z on Train3
+JOIN ordered_schedule T4
+    ON Z.station = T4.station
+    AND T4.train <> A.train
+    AND T4.train <> T2.train
+    AND T4.train <> T3.train         -- Change to Train4 at Z
+JOIN ordered_schedule E
+    ON T4.train = E.train
+    AND T4.seq < E.seq               -- Z → E on Train4
+WHERE A.station IN (SELECT station FROM terminus)
+  AND E.station IN (SELECT station FROM terminus)
+  AND A.station <> X.station
+  AND A.station <> Y.station
+  AND A.station <> Z.station
+  AND A.station <> E.station
+  AND E.station <> X.station
+  AND E.station <> Y.station
+  AND E.station <> Z.station
+  AND X.station <> Y.station
+  AND Y.station <> Z.station
+  AND X.station <> Z.station;
+
+-- Display results for Task 2
+SELECT * FROM routes_three 
+ORDER BY StationA, StationB, Train1;
