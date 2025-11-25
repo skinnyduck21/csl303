@@ -1,0 +1,208 @@
+Question 1:
+
+
+CREATE DATABASE company_db;
+USE company_db;
+
+CREATE TABLE employees (
+    employee_id INT PRIMARY KEY,
+    employee_name VARCHAR(100),
+    manager_id INT
+);
+
+INSERT INTO employees (employee_id, employee_name, manager_id) VALUES
+(1, 'Alice (CEO)', NULL),
+(2, 'Bob (VP)', 1),
+(3, 'Charlie (VP)', 1),
+(4, 'David (Manager)', 2),
+(5, 'Eve (Manager)', 2),
+(6, 'Frank (Dev)', 4),
+(7, 'Grace (Dev)', 4);
+
+WITH RECURSIVE OrgHierarchy AS (
+    SELECT 
+        employee_id, 
+        employee_name, 
+        manager_id, 
+        1 AS hierarchy_level, 
+        CAST(employee_name AS CHAR(200)) AS path 
+    FROM 
+        employees
+    WHERE 
+        manager_id IS NULL
+
+    UNION ALL
+
+    SELECT 
+        e.employee_id, 
+        e.employee_name, 
+        e.manager_id, 
+        oh.hierarchy_level + 1, 
+        CONCAT(oh.path, ' > ', e.employee_name) 
+    FROM 
+        employees e
+    INNER JOIN 
+        OrgHierarchy oh ON e.manager_id = oh.employee_id
+)
+SELECT * FROM OrgHierarchy
+ORDER BY hierarchy_level, manager_id;
+
+
+
+
+
+
+
+Question 2:
+
+CREATE TABLE sales (
+    sale_id INT PRIMARY KEY,
+    product_id INT,
+    sale_date DATE,
+    sale_amount DECIMAL(10, 2)
+);
+
+INSERT INTO sales (sale_id, product_id, sale_date, sale_amount) VALUES
+(1, 101, '2023-01-01', 100.00),
+(2, 101, '2023-01-02', 110.00),
+(3, 101, '2023-01-03', 120.00),
+(4, 101, '2023-01-04', 130.00),
+(5, 101, '2023-01-05', 110.00),
+(6, 101, '2023-01-06', 140.00),
+(7, 101, '2023-01-07', 150.00),
+(8, 101, '2023-01-08', 200.00);
+
+WITH DailySales AS (
+    SELECT 
+        product_id,
+        sale_date,
+        SUM(sale_amount) as daily_total
+    FROM 
+        sales
+    GROUP BY 
+        product_id, sale_date
+),
+SalesAnalysis AS (
+    SELECT 
+        product_id,
+        sale_date,
+        daily_total,
+        AVG(daily_total) OVER (
+            PARTITION BY product_id 
+            ORDER BY sale_date
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ) AS moving_avg_7_days,
+        LAG(daily_total) OVER (
+            PARTITION BY product_id 
+            ORDER BY sale_date
+        ) AS prev_day_sales
+    FROM 
+        DailySales
+)
+SELECT 
+    product_id,
+    sale_date,
+    daily_total,
+    ROUND(moving_avg_7_days, 2) AS moving_avg_7_days,
+    ROUND(
+        ((daily_total - prev_day_sales) / prev_day_sales) * 100, 
+    2) AS pct_change_vs_yesterday
+FROM 
+    SalesAnalysis
+ORDER BY 
+    product_id, sale_date;
+
+
+
+
+
+
+Question 3:
+
+1. The Solution (Create these 3 Indexes)
+-- 1. Customers: Filter by Segment -> Join by ID -> Select Name
+CREATE INDEX idx_cust_cover 
+ON customers (customer_segment, customer_id, customer_name);
+
+-- 2. Products: Filter by Category -> Join by ID -> Select Name
+CREATE INDEX idx_prod_cover 
+ON products (product_category, product_id, product_name);
+
+-- 3. Orders: Filter by Date -> Join by IDs
+CREATE INDEX idx_orders_cover 
+ON orders (order_date, customer_id, product_id);
+
+
+2. Why these Indexes? (The Reasoning)
+For an index to be "Covering" (maximum speed), the column order matters:
+
+First (Filters): Columns in the WHERE clause (e.g., customer_segment). This lets the DB jump straight to the relevant data.
+
+Second (Joins): Columns used to link tables (e.g., customer_id).
+
+Third (Selects): Columns you want to display (e.g., customer_name).
+
+
+3. What is a "Covering Index"?
+A Covering Index is an index that stores all the data the query needs (The WHERE, JOIN, and SELECT columns).
+
+Benefit: The database engine reads the answer directly from the index (which is small and sorted) and never has to touch the massive main table data. This effectively changes the operation from "Slow Disk Reading" to "Fast Memory Reading."
+
+
+
+Question 4:
+
+
+db.articles.aggregate([
+    // 4.a. Filter for articles with more than 1000 views
+    {
+        $match: {
+            views: { $gt: 1000 }
+        }
+    },
+    // Optimization: Calculate stats per article BEFORE unwinding to reduce processing
+    {
+        $addFields: {
+            numberOfComments: { $size: "$comments" },
+            totalLikes: { $sum: "$comments.likes" }
+        }
+    },
+    // 4.b. Unwind the tags array (creates a document for each tag)
+    {
+        $unwind: "$tags"
+    },
+    // 4.c. Group by tag to find averages
+    {
+        $group: {
+            _id: "$tags",
+            avgNumComments: { $avg: "$numberOfComments" },
+            avgNumLikes: { $avg: "$totalLikes" }
+        }
+    },
+    // 4.d. Sort by average likes in descending order
+    {
+        $sort: {
+            avgNumLikes: -1
+        }
+    }
+])
+
+
+
+Question 5:
+
+db.restaurants.createIndex({ location: "2dsphere" })
+
+db.restaurants.find({
+   location: {
+     $near: {
+       $geometry: {
+          type: "Point",
+          coordinates: [-73.98, 40.77] 
+       },
+       $maxDistance: 5000 
+     }
+   }
+})
+
+
